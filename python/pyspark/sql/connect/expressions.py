@@ -643,6 +643,32 @@ class PythonUDF:
         return f"{self._output_type}, {self._eval_type}, {self._func}, f{self._python_ver}"
 
 
+class WasmUDF:
+    """Represents a WASM (aggregate) user-defined function."""
+
+    def __init__(
+        self,
+        bytecode: bytes,
+        output_type: Optional["DataTypeOrString"],
+        eval_type: Union[DataType, str],
+    ) -> None:
+        self._bytecode = bytecode
+        self._output_type: DataType = (
+            UnparsedDataType(output_type) if isinstance(output_type, str) else output_type
+        )
+        self._eval_type = eval_type
+
+    def to_plan(self, session: "SparkConnectClient") -> proto.WasmUDF:
+        expr = proto.WasmUDF()
+        expr.bytecode = self._bytecode
+        if self._output_type is not None:
+            expr.output_type.CopyFrom(pyspark_types_to_proto_types(self._output_type))
+        expr.eval_type = self._eval_type
+        return expr
+
+    def __repr__(self) -> str:
+        return f"WASM: {self._output_type}"
+
 class JavaUDF:
     """Represents a Java (aggregate) user-defined function."""
 
@@ -709,6 +735,17 @@ class CommonInlineUserDefinedFunction(Expression):
         if len(self._arguments) > 0:
             expr.arguments.extend([arg.to_plan(session) for arg in self._arguments])
         expr.python_udf.CopyFrom(cast(proto.PythonUDF, self._function.to_plan(session)))
+        return expr
+
+    def to_plan_wasm_udf(self, session: "SparkConnectClient") -> "proto.CommonInlineUserDefinedFunction":
+        """Compared to `to_plan`, it returns a CommonInlineUserDefinedFunction instead of an
+        Expression."""
+        expr = proto.CommonInlineUserDefinedFunction()
+        expr.function_name = self._function_name
+        expr.deterministic = self._deterministic
+        if len(self._arguments) > 0:
+            expr.arguments.extend([arg.to_plan(session) for arg in self._arguments])
+        expr.wasm_udf.CopyFrom(cast(proto.WasmUDF, self._function.to_plan(session)))
         return expr
 
     def to_plan_judf(

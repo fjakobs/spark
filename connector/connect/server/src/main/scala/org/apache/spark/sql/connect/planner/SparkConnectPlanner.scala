@@ -22,6 +22,8 @@ import scala.jdk.CollectionConverters._
 import scala.util.Try
 import scala.util.control.NonFatal
 
+import java.nio.charset.StandardCharsets
+
 import com.google.common.base.Throwables
 import com.google.common.collect.{Lists, Maps}
 import com.google.protobuf.{Any => ProtoAny, ByteString}
@@ -1501,6 +1503,8 @@ class SparkConnectPlanner(
         transformPythonFuncExpression(fun)
       case proto.CommonInlineUserDefinedFunction.FunctionCase.SCALAR_SCALA_UDF =>
         transformScalarScalaUDF(fun)
+      case proto.CommonInlineUserDefinedFunction.FunctionCase.WASM_UDF =>
+        transformScalarWasmUDF(fun)
       case _ =>
         throw InvalidPlanInput(
           s"Function with ID: ${fun.getFunctionCase.getNumber} is not supported")
@@ -1579,6 +1583,10 @@ class SparkConnectPlanner(
       udfName = Option(fun.getFunctionName),
       nullable = udf.getNullable,
       udfDeterministic = fun.getDeterministic)
+  }
+
+  private def transformScalarWasmUDF(fun: proto.CommonInlineUserDefinedFunction): ScalaUDF = {
+    throw new UnsupportedOperationException("WASM UDF is not supported yet.")
   }
 
   private def transformScalarScalaFunction(
@@ -2620,6 +2628,8 @@ class SparkConnectPlanner(
         handleRegisterJavaUDF(fun)
       case proto.CommonInlineUserDefinedFunction.FunctionCase.SCALAR_SCALA_UDF =>
         handleRegisterScalarScalaUDF(fun)
+      case proto.CommonInlineUserDefinedFunction.FunctionCase.WASM_UDF =>
+        handleRegisterWasmUDF(fun)
       case _ =>
         throw InvalidPlanInput(
           s"Function with ID: ${fun.getFunctionCase.getNumber} is not supported")
@@ -2693,6 +2703,25 @@ class SparkConnectPlanner(
   private def handleRegisterScalarScalaUDF(fun: proto.CommonInlineUserDefinedFunction): Unit = {
     val udf = transformScalarScalaFunction(fun)
     session.udf.register(fun.getFunctionName, udf)
+  }
+
+  private def handleRegisterWasmUDF(fun: proto.CommonInlineUserDefinedFunction): Unit = {
+    val udf = fun.getWasmUdf
+    val bytecode = udf.getBytecode.toByteArray.toImmutableArraySeq
+
+    // convert array sequence to utf-8 string
+    val wasm = new String(bytecode.toArray, StandardCharsets.UTF_8)
+
+    throw new UnsupportedOperationException(s"WASM UDF are not supported yet: ${wasm}")
+//    val function = transformPythonFunction(udf)
+//    val udpf = UserDefinedPythonFunction(
+//      name = fun.getFunctionName,
+//      func = function,
+//      dataType = transformDataType(udf.getOutputType),
+//      pythonEvalType = udf.getEvalType,
+//      udfDeterministic = fun.getDeterministic)
+//
+//    session.udf.registerPython(fun.getFunctionName, udpf)
   }
 
   private def handleCommandPlugin(extension: ProtoAny): Unit = {

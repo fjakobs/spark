@@ -1317,6 +1317,7 @@ class CommonInlineUserDefinedFunction(google.protobuf.message.Message):
     PYTHON_UDF_FIELD_NUMBER: builtins.int
     SCALAR_SCALA_UDF_FIELD_NUMBER: builtins.int
     JAVA_UDF_FIELD_NUMBER: builtins.int
+    WASM_UDF_FIELD_NUMBER: builtins.int
     function_name: builtins.str
     """(Required) Name of the user-defined function."""
     deterministic: builtins.bool
@@ -1332,6 +1333,8 @@ class CommonInlineUserDefinedFunction(google.protobuf.message.Message):
     def scalar_scala_udf(self) -> global___ScalarScalaUDF: ...
     @property
     def java_udf(self) -> global___JavaUDF: ...
+    @property
+    def wasm_udf(self) -> global___WasmUDF: ...
     def __init__(
         self,
         *,
@@ -1341,6 +1344,7 @@ class CommonInlineUserDefinedFunction(google.protobuf.message.Message):
         python_udf: global___PythonUDF | None = ...,
         scalar_scala_udf: global___ScalarScalaUDF | None = ...,
         java_udf: global___JavaUDF | None = ...,
+        wasm_udf: global___WasmUDF | None = ...,
     ) -> None: ...
     def HasField(
         self,
@@ -1353,6 +1357,8 @@ class CommonInlineUserDefinedFunction(google.protobuf.message.Message):
             b"python_udf",
             "scalar_scala_udf",
             b"scalar_scala_udf",
+            "wasm_udf",
+            b"wasm_udf",
         ],
     ) -> builtins.bool: ...
     def ClearField(
@@ -1372,13 +1378,49 @@ class CommonInlineUserDefinedFunction(google.protobuf.message.Message):
             b"python_udf",
             "scalar_scala_udf",
             b"scalar_scala_udf",
+            "wasm_udf",
+            b"wasm_udf",
         ],
     ) -> None: ...
     def WhichOneof(
         self, oneof_group: typing_extensions.Literal["function", b"function"]
-    ) -> typing_extensions.Literal["python_udf", "scalar_scala_udf", "java_udf"] | None: ...
+    ) -> (
+        typing_extensions.Literal["python_udf", "scalar_scala_udf", "java_udf", "wasm_udf"] | None
+    ): ...
 
 global___CommonInlineUserDefinedFunction = CommonInlineUserDefinedFunction
+
+class WasmUDF(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    OUTPUT_TYPE_FIELD_NUMBER: builtins.int
+    EVAL_TYPE_FIELD_NUMBER: builtins.int
+    BYTECODE_FIELD_NUMBER: builtins.int
+    @property
+    def output_type(self) -> pyspark.sql.connect.proto.types_pb2.DataType:
+        """(Required) Output type of the WASM UDF"""
+    eval_type: builtins.int
+    """(Required) EvalType of the WASM UDF"""
+    bytecode: builtins.bytes
+    """(Required) The encoded byte code of the WASM UDF"""
+    def __init__(
+        self,
+        *,
+        output_type: pyspark.sql.connect.proto.types_pb2.DataType | None = ...,
+        eval_type: builtins.int = ...,
+        bytecode: builtins.bytes = ...,
+    ) -> None: ...
+    def HasField(
+        self, field_name: typing_extensions.Literal["output_type", b"output_type"]
+    ) -> builtins.bool: ...
+    def ClearField(
+        self,
+        field_name: typing_extensions.Literal[
+            "bytecode", b"bytecode", "eval_type", b"eval_type", "output_type", b"output_type"
+        ],
+    ) -> None: ...
+
+global___WasmUDF = WasmUDF
 
 class PythonUDF(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor

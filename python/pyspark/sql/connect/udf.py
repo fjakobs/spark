@@ -284,6 +284,16 @@ class UDFRegistration:
 
     register.__doc__ = PySparkUDFRegistration.register.__doc__
 
+    def registerWasm(
+        self,
+        name: str,
+        wasmPath: str,
+        returnType: Optional["DataTypeOrString"] = None,
+    ) -> None:
+        with open(wasmPath, "rb") as f:
+            wasmByteCode = f.read()
+        self.sparkSession._client.register_wasm(name, wasmByteCode, returnType)
+
     def registerJavaFunction(
         self,
         name: str,
