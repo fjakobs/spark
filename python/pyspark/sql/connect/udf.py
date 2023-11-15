@@ -34,6 +34,7 @@ from pyspark.sql.connect.expressions import (
     Expression,
     NamedArgumentExpression,
     PythonUDF,
+    WasmUDF,
 )
 from pyspark.sql.connect.column import Column
 from pyspark.sql.connect.types import UnparsedDataType
@@ -105,7 +106,72 @@ def _create_udf(
     )
     return udf_obj._wrapped()
 
+class UserDefinedWasmFunction:
+    def __init__(
+        self,
+        name: str,
+        bytecode: bytes,
+        nargs: int = 1,
+        returnType: "DataTypeOrString" = StringType(),
+        deterministic: bool = True,
+    ):
+        self.name = name
+        self.bytecode = bytecode
+        self.nargs = nargs
+        self.returnType = returnType
+        self.deterministic = deterministic
 
+    def _build_common_inline_user_defined_function(
+        self, *args: "ColumnOrName", **kwargs: "ColumnOrName"
+    ) -> CommonInlineUserDefinedFunction:
+        def to_expr(col: "ColumnOrName") -> Expression:
+            return col._expr if isinstance(col, Column) else ColumnReference(col)
+
+        arg_exprs: List[Expression] = [to_expr(arg) for arg in args] + [
+            NamedArgumentExpression(key, to_expr(value)) for key, value in kwargs.items()
+        ]
+
+        wasm_udf = WasmUDF(
+            bytecode=self.bytecode,
+            output_type=self.returnType,
+            eval_type=PythonEvalType.SQL_BATCHED_UDF,
+        )
+        return CommonInlineUserDefinedFunction(
+            function_name=self.name,
+            function=wasm_udf,
+            deterministic=self.deterministic,
+            arguments=arg_exprs,
+        )
+    
+    def __call__(self, *args: "ColumnOrName", **kwargs: "ColumnOrName") -> Column:
+        return Column(self._build_common_inline_user_defined_function(*args, **kwargs))
+
+    def _wrapped(self) -> "UserDefinedFunctionLike":
+        def wrapper(*args: "ColumnOrName", **kwargs: "ColumnOrName") -> Column:
+            return self(*args, **kwargs)
+
+        wrapper.__name__ = self.name
+
+        wrapper.name = self.name  # type: ignore[attr-defined]
+        wrapper.bytecode = self.bytecode  # type: ignore[attr-defined]
+        wrapper.nargs = self.nargs  # type: ignore[attr-defined]
+        wrapper.returnType = self.returnType  # type: ignore[attr-defined]
+        wrapper.deterministic = self.deterministic  # type: ignore[attr-defined]
+        wrapper.asNondeterministic = functools.wraps(  # type: ignore[attr-defined]
+            self.asNondeterministic
+        )(lambda: self.asNondeterministic()._wrapped())
+        wrapper._unwrapped = self  # type: ignore[attr-defined]
+        return wrapper  # type: ignore[return-value]
+
+    def asNondeterministic(self) -> "UserDefinedWasmFunction":
+        """
+        Updates UserDefinedWasmFunction to nondeterministic.
+
+        .. versionadded:: 3.4.0
+        """
+        self.deterministic = False
+        return self
+    
 class UserDefinedFunction:
     """
     User defined function in Python

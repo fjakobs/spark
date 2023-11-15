@@ -649,8 +649,8 @@ class WasmUDF:
     def __init__(
         self,
         bytecode: bytes,
-        output_type: Optional["DataTypeOrString"],
-        eval_type: Union[DataType, str],
+        output_type: Union[DataType, str],
+        eval_type: int,
     ) -> None:
         self._bytecode = bytecode
         self._output_type: DataType = (
@@ -703,7 +703,7 @@ class CommonInlineUserDefinedFunction(Expression):
     def __init__(
         self,
         function_name: str,
-        function: Union[PythonUDF, JavaUDF],
+        function: Union[PythonUDF, JavaUDF, WasmUDF],
         deterministic: bool = False,
         arguments: Sequence[Expression] = [],
     ):
@@ -721,9 +721,16 @@ class CommonInlineUserDefinedFunction(Expression):
             expr.common_inline_user_defined_function.arguments.extend(
                 [arg.to_plan(session) for arg in self._arguments]
             )
-        expr.common_inline_user_defined_function.python_udf.CopyFrom(
-            cast(proto.PythonUDF, self._function.to_plan(session))
-        )
+
+        if (isinstance(self._function, WasmUDF)):
+            expr.common_inline_user_defined_function.wasm_udf.CopyFrom(
+                cast(proto.WasmUDF, self._function.to_plan(session))
+            )
+        else:            
+            expr.common_inline_user_defined_function.python_udf.CopyFrom(
+                cast(proto.PythonUDF, self._function.to_plan(session))
+            )
+
         return expr
 
     def to_plan_udf(self, session: "SparkConnectClient") -> "proto.CommonInlineUserDefinedFunction":

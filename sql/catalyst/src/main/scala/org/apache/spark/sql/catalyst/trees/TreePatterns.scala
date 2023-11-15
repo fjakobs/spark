@@ -79,6 +79,7 @@ object TreePattern extends Enumeration  {
   val PIVOT: Value = Value
   val PLAN_EXPRESSION: Value = Value
   val PYTHON_UDF: Value = Value
+  val WASM_UDF: Value = Value
   val REGEXP_EXTRACT_FAMILY: Value = Value
   val REGEXP_REPLACE: Value = Value
   val RUNTIME_REPLACEABLE: Value = Value

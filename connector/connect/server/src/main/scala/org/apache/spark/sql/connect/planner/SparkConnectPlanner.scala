@@ -1504,7 +1504,7 @@ class SparkConnectPlanner(
       case proto.CommonInlineUserDefinedFunction.FunctionCase.SCALAR_SCALA_UDF =>
         transformScalarScalaUDF(fun)
       case proto.CommonInlineUserDefinedFunction.FunctionCase.WASM_UDF =>
-        transformScalarWasmUDF(fun)
+        transformWasmUDF(fun)
       case _ =>
         throw InvalidPlanInput(
           s"Function with ID: ${fun.getFunctionCase.getNumber} is not supported")
@@ -1585,7 +1585,7 @@ class SparkConnectPlanner(
       udfDeterministic = fun.getDeterministic)
   }
 
-  private def transformScalarWasmUDF(fun: proto.CommonInlineUserDefinedFunction): ScalaUDF = {
+  private def transformWasmUDF(fun: proto.CommonInlineUserDefinedFunction): ScalaUDF = {
     throw new UnsupportedOperationException("WASM UDF is not supported yet.")
   }
 
