@@ -17,12 +17,12 @@
 
 package org.apache.spark.sql.connect.planner
 
+import java.nio.charset.StandardCharsets
+
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import scala.util.Try
 import scala.util.control.NonFatal
-
-import java.nio.charset.StandardCharsets
 
 import com.google.common.base.Throwables
 import com.google.common.collect.{Lists, Maps}
@@ -74,6 +74,7 @@ import org.apache.spark.sql.execution.python.{PythonForeachWriter, UserDefinedPy
 import org.apache.spark.sql.execution.stat.StatFunctions
 import org.apache.spark.sql.execution.streaming.GroupStateImpl.groupStateTimeoutFromString
 import org.apache.spark.sql.execution.streaming.StreamingQueryWrapper
+import org.apache.spark.sql.execution.wasm.UserDefinedWasmFunction
 import org.apache.spark.sql.expressions.{ReduceAggregator, SparkUserDefinedFunction}
 import org.apache.spark.sql.internal.{CatalogImpl, TypedAggUtils}
 import org.apache.spark.sql.protobuf.{CatalystDataToProtobuf, ProtobufDataToCatalyst}
@@ -1585,10 +1586,6 @@ class SparkConnectPlanner(
       udfDeterministic = fun.getDeterministic)
   }
 
-  private def transformWasmUDF(fun: proto.CommonInlineUserDefinedFunction): ScalaUDF = {
-    throw new UnsupportedOperationException("WASM UDF is not supported yet.")
-  }
-
   private def transformScalarScalaFunction(
       fun: proto.CommonInlineUserDefinedFunction): SparkUserDefinedFunction = {
     val udf = fun.getScalarScalaUdf
@@ -1601,6 +1598,22 @@ class SparkConnectPlanner(
       name = Option(fun.getFunctionName),
       nullable = udf.getNullable,
       deterministic = fun.getDeterministic)
+  }
+
+  private def transformWasmUDF(fun: proto.CommonInlineUserDefinedFunction): WasmUDF = {
+    transformWasmFuncExpression(fun).asInstanceOf[WasmUDF]
+  }
+
+  private def transformWasmFuncExpression(
+      fun: proto.CommonInlineUserDefinedFunction): Expression = {
+    val udf = fun.getWasmUdf
+    val wasm_udf = UserDefinedWasmFunction(
+      name = fun.getFunctionName,
+      bytecode = udf.getBytecode,
+      dataType = transformDataType(udf.getOutputType),
+      udfDeterministic = fun.getDeterministic
+    )
+    wasm_udf.builder(fun.getArgumentsList.asScala.map(transformExpression).toSeq)
   }
 
   /**

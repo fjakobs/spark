@@ -17,15 +17,16 @@
 
 package org.apache.spark.sql.catalyst.expressions
 
+import com.google.protobuf.ByteString
+
 import org.apache.spark.sql.catalyst.trees.TreePattern.{TreePattern, WASM_UDF}
 import org.apache.spark.sql.catalyst.util.toPrettySQL
 import org.apache.spark.sql.types.DataType
 
 trait WasmFuncExpression extends NonSQLExpression with UserDefinedExpression { self: Expression =>
   def name: String
-  def bytecode: Array[Byte]
-  def evalType: Int
-  def udfDeterministic: Boolean
+  def bytecode: ByteString
+    def udfDeterministic: Boolean
   def resultId: ExprId
 
   override lazy val deterministic: Boolean = udfDeterministic && children.forall(_.deterministic)
@@ -35,10 +36,9 @@ trait WasmFuncExpression extends NonSQLExpression with UserDefinedExpression { s
 
 case class WasmUDF(
     name: String,
-    bytecode: Array[Byte],
+    bytecode: ByteString,
     dataType: DataType,
     children: Seq[Expression],
-    evalType: Int,
     udfDeterministic: Boolean,
     resultId: ExprId = NamedExpression.newExprId)
   extends Expression with WasmFuncExpression with Unevaluable {
