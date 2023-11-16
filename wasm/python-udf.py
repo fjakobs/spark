@@ -1,9 +1,9 @@
 from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.remote("sc://localhost").getOrCreate()
+spark = SparkSession.builder.getOrCreate()
 
-from pyspark.sql.connect.functions import col, udf
-from pyspark.sql.connect.types import LongType
+from pyspark.sql.functions import col, udf
+from pyspark.sql.types import LongType
 import pandas as pd
 
 def multiply_func(a, b):
@@ -18,5 +18,5 @@ df = spark.createDataFrame(pd.DataFrame(x, columns=["x"]))
 df = df.select(multiply(col("x"), col("x")), "x")
 
 # print plan
-df.explain()
+df.explain(True)
 df.show()

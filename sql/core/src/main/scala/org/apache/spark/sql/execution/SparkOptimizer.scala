@@ -27,6 +27,7 @@ import org.apache.spark.sql.execution.datasources.{PlanPythonDataSourceScan, Pru
 import org.apache.spark.sql.execution.datasources.v2.{GroupBasedRowLevelOperationScanPlanning, OptimizeMetadataOnlyDeleteFromTable, V2ScanPartitioningAndOrdering, V2ScanRelationPushDown, V2Writes}
 import org.apache.spark.sql.execution.dynamicpruning.{CleanupDynamicPruningFilters, PartitionPruning, RowLevelOperationRuntimeGroupFiltering}
 import org.apache.spark.sql.execution.python.{ExtractGroupingPythonUDFFromAggregate, ExtractPythonUDFFromAggregate, ExtractPythonUDFs, ExtractPythonUDTFs}
+import org.apache.spark.sql.execution.wasm.ExtractWasmUDFs
 
 class SparkOptimizer(
     catalogManager: CatalogManager,
@@ -79,6 +80,7 @@ class SparkOptimizer(
       ExtractGroupingPythonUDFFromAggregate,
       ExtractPythonUDFs,
       ExtractPythonUDTFs,
+      ExtractWasmUDFs,
       // The eval-python node may be between Project/Filter and the scan node, which breaks
       // column pruning and filter push-down. Here we rerun the related optimizer rules.
       ColumnPruning,

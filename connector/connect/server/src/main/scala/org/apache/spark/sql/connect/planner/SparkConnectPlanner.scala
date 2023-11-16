@@ -1609,7 +1609,7 @@ class SparkConnectPlanner(
     val udf = fun.getWasmUdf
     val wasm_udf = UserDefinedWasmFunction(
       name = fun.getFunctionName,
-      bytecode = udf.getBytecode,
+      bytecode = udf.getBytecode.toByteArray,
       dataType = transformDataType(udf.getOutputType),
       udfDeterministic = fun.getDeterministic
     )

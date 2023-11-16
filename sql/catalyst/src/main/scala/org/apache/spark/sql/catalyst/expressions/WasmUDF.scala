@@ -17,16 +17,15 @@
 
 package org.apache.spark.sql.catalyst.expressions
 
-import com.google.protobuf.ByteString
-
+import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.catalyst.trees.TreePattern.{TreePattern, WASM_UDF}
 import org.apache.spark.sql.catalyst.util.toPrettySQL
 import org.apache.spark.sql.types.DataType
 
 trait WasmFuncExpression extends NonSQLExpression with UserDefinedExpression { self: Expression =>
   def name: String
-  def bytecode: ByteString
-    def udfDeterministic: Boolean
+  def bytecode: Array[Byte]
+  def udfDeterministic: Boolean
   def resultId: ExprId
 
   override lazy val deterministic: Boolean = udfDeterministic && children.forall(_.deterministic)
@@ -36,7 +35,7 @@ trait WasmFuncExpression extends NonSQLExpression with UserDefinedExpression { s
 
 case class WasmUDF(
     name: String,
-    bytecode: ByteString,
+    bytecode: Array[Byte],
     dataType: DataType,
     children: Seq[Expression],
     udfDeterministic: Boolean,
@@ -55,4 +54,10 @@ case class WasmUDF(
 
   override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): WasmUDF =
     copy(children = newChildren)
+
+  override def genCode(ctx: CodegenContext): ExprCode = {
+    // scalastyle:off throwerror
+    throw new NotImplementedError("Implement code gen")
+    // scalastyle:on throwerror"
+  }
 }

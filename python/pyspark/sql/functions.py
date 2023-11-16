@@ -48,7 +48,7 @@ from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.types import ArrayType, DataType, StringType, StructType, _from_numpy_type
 
 # Keep UserDefinedFunction import for backwards compatible import; moved in SPARK-22409
-from pyspark.sql.udf import UserDefinedFunction, _create_py_udf  # noqa: F401
+from pyspark.sql.udf import UserDefinedFunction, UserDefinedWasmFunction, _create_py_udf  # noqa: F401
 from pyspark.sql.udtf import AnalyzeArgument, AnalyzeResult  # noqa: F401
 from pyspark.sql.udtf import OrderingColumn, PartitioningColumn  # noqa: F401
 from pyspark.sql.udtf import UserDefinedTableFunction, _create_py_udtf
@@ -16132,6 +16132,26 @@ def call_udf(udfName: str, *cols: "ColumnOrName") -> Column:
     """
     sc = _get_active_spark_context()
     return _invoke_function("call_udf", udfName, _to_seq(sc, cols, _to_java_column))
+
+@_try_remote_functions
+def wasm_udf(
+    name: str,
+    path: str,
+    nargs: int = 1,
+    returnType: "DataTypeOrString" = StringType(),
+    deterministic: bool = True,
+) -> Union["UserDefinedFunctionLike", Callable[[Callable[..., Any]], "UserDefinedFunctionLike"]]:
+    with open(path, "rb") as f:
+        bytecode = f.read()
+
+    udf_obj = UserDefinedWasmFunction(
+        name,
+        bytecode,
+        nargs,
+        returnType,
+        deterministic,
+    )
+    return udf_obj._wrapped()
 
 
 @_try_remote_functions

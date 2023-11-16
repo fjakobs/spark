@@ -20,5 +20,5 @@ df = spark.createDataFrame(pd.DataFrame(x, columns=["x"]))
 df = df.select(multiply(col("x"), col("x")), "x")
 
 # print plan
-df.explain()
+df.explain(True)
 df.show()

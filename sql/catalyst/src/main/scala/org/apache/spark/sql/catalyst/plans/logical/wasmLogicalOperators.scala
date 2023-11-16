@@ -15,28 +15,27 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.execution.wasm
+package org.apache.spark.sql.catalyst.plans.logical
 
-import org.apache.spark.sql.Column
-import org.apache.spark.sql.catalyst.expressions.{Expression, WasmUDF}
-import org.apache.spark.sql.types.DataType
+import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeSet, WasmUDF}
+import org.apache.spark.sql.catalyst.trees.TreePattern.{EVAL_WASM_UDF, TreePattern}
 
-case class UserDefinedWasmFunction(
-    name: String,
-    bytecode: Array[Byte],
-    dataType: DataType,
-    udfDeterministic: Boolean) {
+trait BaseEvalWasm extends UnaryNode {
 
-  def builder(e: Seq[Expression]): Expression = {
-    WasmUDF(name, bytecode, dataType, e, udfDeterministic)
-  }
+  def udfs: Seq[WasmUDF]
 
-  /** Returns a [[Column]] that will evaluate to calling this UDF with the given input. */
-  def apply(expressions: Column*): Column = {
-    fromUDFExpr(builder(expressions.map(_.expr)))
-  }
+  def resultAttrs: Seq[Attribute]
 
-  def fromUDFExpr(expr: Expression): Column = {
-    Column(expr)
-  }
+  override def output: Seq[Attribute] = child.output ++ resultAttrs
+
+  override def producedAttributes: AttributeSet = AttributeSet(resultAttrs)
+
+  final override val nodePatterns: Seq[TreePattern] = Seq(EVAL_WASM_UDF)
+}
+case class BatchEvalWasm(
+    udfs: Seq[WasmUDF],
+    resultAttrs: Seq[Attribute],
+    child: LogicalPlan) extends BaseEvalWasm {
+  override protected def withNewChildInternal(newChild: LogicalPlan): BatchEvalWasm =
+    copy(child = newChild)
 }
