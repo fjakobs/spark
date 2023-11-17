@@ -16,8 +16,8 @@ x = pd.Series([1, 2, 3])
 df = spark.createDataFrame(pd.DataFrame(x, columns=["x"]))
 
 multiply = wasm_udf("multiply", cwd / "multiply.wasm", returnType="long")
-
-df = df.select(multiply(col("x"), col("x")), "x")
+df = df.withColumn("y", col("x") * 2)
+df = df.select(multiply(col("x"), col("y")), "x", "y")
 
 # print plan
 df.explain(True)

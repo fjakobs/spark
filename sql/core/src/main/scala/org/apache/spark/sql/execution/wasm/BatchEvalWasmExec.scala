@@ -66,16 +66,17 @@ trait EvalWasmExec extends UnaryExecNode {
 object BatchEvalWasmExec {
   def getInputIterator(
       iter: Iterator[InternalRow],
-      schema: StructType): Iterator[Array[Any]] = {
+      schema: StructType): Iterator[Array[Array[Long]]] = {
 
     val dataTypes = schema.map(_.dataType)
 
     iter.map { row =>
-      val fields = new Array[Any](row.numFields)
+      val fields = new Array[Long](row.numFields)
       var i = 0
       while (i < row.numFields) {
         val dt = dataTypes(i)
-        fields(i) = row.get(i, dt)
+        // fields(i) = row.get(i, dt)
+        fields(i) = row.getLong(i)
 
         i += 1
       }

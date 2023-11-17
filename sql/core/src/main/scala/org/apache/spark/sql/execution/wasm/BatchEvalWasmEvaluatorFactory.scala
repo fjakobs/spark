@@ -50,9 +50,11 @@ class BatchEvalWasmEvaluatorFactory(
 //
     inputIterator.map { row =>
       val result = new GenericInternalRow(1)
+      // val r = (row.asInstanceOf[Array[Array[Long]]])(0)
+      val r = row(0)
 
       result.setLong(0,
-        42 // row(0).intValue() * row(1).intValue()
+        r(0).longValue() * r(1).longValue()
       )
       result
     }
