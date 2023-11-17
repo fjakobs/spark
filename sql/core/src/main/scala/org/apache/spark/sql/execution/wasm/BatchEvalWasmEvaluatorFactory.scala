@@ -47,16 +47,16 @@ class BatchEvalWasmEvaluatorFactory(
 
     val inputIterator = BatchEvalWasmExec.getInputIterator(iter, schema)
 
-    inputIterator.map { row =>
-      val resultRow = new GenericInternalRow(1)
-      val r = row(0)
+    inputIterator.map { batch =>
+      batch.map { row =>
+        val resultRow = new GenericInternalRow(1)
+        val result = WasmEngine.call[Long](udf, row(0), row(1))
+        resultRow.setLong(0, result)
 
-      val result = WasmEngine.call[Long](udf, r(0), r(1))
-      resultRow.setLong(0, result)
-
-      resultRow
+        resultRow
+      }
     }
-  }
+  }.flatMap(_.toSeq.iterator)
 
   private class EvalWasmPartitionEvaluator extends PartitionEvaluator[InternalRow, InternalRow] {
     private def collectFunctions(udf: WasmUDF): Seq[Expression] = {
