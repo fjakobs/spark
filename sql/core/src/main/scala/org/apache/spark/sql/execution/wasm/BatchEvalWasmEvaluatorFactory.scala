@@ -50,7 +50,8 @@ class BatchEvalWasmEvaluatorFactory(
     inputIterator.map { batch =>
       batch.map { row =>
         val resultRow = new GenericInternalRow(1)
-        val result = WasmEngine.call[Long](udf, row(0), row(1))
+        val args = row.slice(0, 2) // TODO get nargs from UDF
+        val result = WasmEngine.call[Long](udf, args: _*)
         resultRow.setLong(0, result)
 
         resultRow
