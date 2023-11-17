@@ -17,13 +17,9 @@
 
 package org.apache.spark.sql.execution.wasm
 
-import java.nio.file.{Files, Paths}
-
 import scala.collection.immutable.Seq
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
-import org.wasmer.Instance
 
 import org.apache.spark.{PartitionEvaluator, PartitionEvaluatorFactory, TaskContext}
 import org.apache.spark.sql.catalyst.InternalRow
@@ -43,7 +39,7 @@ class BatchEvalWasmEvaluatorFactory(
     new EvalWasmPartitionEvaluator
 
   def evaluate(
-                // funcs: Seq[ChainedPythonFunctions],
+                udf: WasmUDF,
                 argMetas: Array[Array[ArgumentMetadata]],
                 iter: Iterator[InternalRow],
                 schema: StructType,
@@ -51,31 +47,13 @@ class BatchEvalWasmEvaluatorFactory(
 
     val inputIterator = BatchEvalWasmExec.getInputIterator(iter, schema)
 
-    System.setProperty("os.arch", "arm64")
-
-    val bytes = Files.readAllBytes(Paths.get("wasm/multiply.wasm"))
-    val instance = new Instance(bytes)
-    var func = (instance.exports.getFunction("multiply"))
-
     inputIterator.map { row =>
       val resultRow = new GenericInternalRow(1)
-      // val r = (row.asInstanceOf[Array[Array[Long]]])(0)
       val r = row(0)
 
-      val resultObj = (func.apply(r(0), r(1)).asInstanceOf[Array[Any]])(0)
+      val result = WasmEngine.call[Long](udf, r(0), r(1))
+      resultRow.setLong(0, result)
 
-      val result = resultObj match {
-        case l: Long => l
-        case l: Int => l
-        case l: Number => l
-        case _ => throw new Exception("Expected a Long")
-      }
-
-      resultRow.setLong(0, result.asInstanceOf[Long])
-
-//      result.setLong(0,
-//        r(0).longValue() * r(1).longValue()
-//      )
       resultRow
     }
   }
@@ -96,6 +74,9 @@ class BatchEvalWasmEvaluatorFactory(
     def eval(
         partitionIndex: Int,
         iters: Iterator[InternalRow]*): Iterator[InternalRow] = {
+
+      // TODO: support multiple UDFs here
+      assert(udfs.length == 1, "Only one UDF is supported for now")
 
       val iter = iters.head
       val context = TaskContext.get()
@@ -139,7 +120,7 @@ class BatchEvalWasmEvaluatorFactory(
         }
 
       var outputRowIterator =
-        evaluate(argMetas, projectedRowIter, schema, context)
+        evaluate(udfs.head, argMetas, projectedRowIter, schema, context)
 
       val joined = new JoinedRow
       val resultProj = UnsafeProjection.create(output, output)
