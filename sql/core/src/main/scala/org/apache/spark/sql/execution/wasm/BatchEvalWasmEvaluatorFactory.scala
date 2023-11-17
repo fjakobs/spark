@@ -17,16 +17,19 @@
 
 package org.apache.spark.sql.execution.wasm
 
+import java.nio.file.{Files, Paths}
+
 import scala.collection.immutable.Seq
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+
+import org.wasmer.Instance
 
 import org.apache.spark.{PartitionEvaluator, PartitionEvaluatorFactory, TaskContext}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression, GenericInternalRow, JoinedRow, MutableProjection, NamedArgumentExpression, UnsafeProjection, UnsafeRow, WasmUDF}
 import org.apache.spark.sql.execution.python.EvalPythonExec.ArgumentMetadata
 import org.apache.spark.sql.types.{DataType, StructField, StructType}
-
 
 
 class BatchEvalWasmEvaluatorFactory(
@@ -47,16 +50,33 @@ class BatchEvalWasmEvaluatorFactory(
                 context: TaskContext): Iterator[InternalRow] = {
 
     val inputIterator = BatchEvalWasmExec.getInputIterator(iter, schema)
-//
+
+    System.setProperty("os.arch", "arm64")
+
+    val bytes = Files.readAllBytes(Paths.get("wasm/multiply.wasm"))
+    val instance = new Instance(bytes)
+    var func = (instance.exports.getFunction("multiply"))
+
     inputIterator.map { row =>
-      val result = new GenericInternalRow(1)
+      val resultRow = new GenericInternalRow(1)
       // val r = (row.asInstanceOf[Array[Array[Long]]])(0)
       val r = row(0)
 
-      result.setLong(0,
-        r(0).longValue() * r(1).longValue()
-      )
-      result
+      val resultObj = (func.apply(r(0), r(1)).asInstanceOf[Array[Any]])(0)
+
+      val result = resultObj match {
+        case l: Long => l
+        case l: Int => l
+        case l: Number => l
+        case _ => throw new Exception("Expected a Long")
+      }
+
+      resultRow.setLong(0, result.asInstanceOf[Long])
+
+//      result.setLong(0,
+//        r(0).longValue() * r(1).longValue()
+//      )
+      resultRow
     }
   }
 
