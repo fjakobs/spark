@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8">
     <title>title</title>
+  </head>
+  <body>
     <script>
       (async () => {
         let response = await fetch('target/wasm32-unknown-unknown/release/wasm_udf.wasm');
         let bytes = await response.arrayBuffer();
         let { instance } = await WebAssembly.instantiate(bytes, { });
 
-        console.log('The answer is: ', instance.exports.multiply(BigInt(13), BigInt(3)).toString());
+        document.body.innerHTML = `13 + 3 = ${instance.exports.multiply(BigInt(13), BigInt(3)).toString()}`;
       })();
     </script>
-  </head>
-  <body>
   </body>
 </html>
