@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.connect.planner
 
+import java.nio.charset.StandardCharsets
+
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -72,6 +74,7 @@ import org.apache.spark.sql.execution.python.{PythonForeachWriter, UserDefinedPy
 import org.apache.spark.sql.execution.stat.StatFunctions
 import org.apache.spark.sql.execution.streaming.GroupStateImpl.groupStateTimeoutFromString
 import org.apache.spark.sql.execution.streaming.StreamingQueryWrapper
+import org.apache.spark.sql.execution.wasm.UserDefinedWasmFunction
 import org.apache.spark.sql.expressions.{ReduceAggregator, SparkUserDefinedFunction}
 import org.apache.spark.sql.internal.{CatalogImpl, TypedAggUtils}
 import org.apache.spark.sql.protobuf.{CatalystDataToProtobuf, ProtobufDataToCatalyst}
@@ -1510,6 +1513,8 @@ class SparkConnectPlanner(
         transformPythonFuncExpression(fun)
       case proto.CommonInlineUserDefinedFunction.FunctionCase.SCALAR_SCALA_UDF =>
         transformScalarScalaUDF(fun)
+      case proto.CommonInlineUserDefinedFunction.FunctionCase.WASM_UDF =>
+        transformWasmUDF(fun)
       case _ =>
         throw InvalidPlanInput(
           s"Function with ID: ${fun.getFunctionCase.getNumber} is not supported")
@@ -1602,6 +1607,22 @@ class SparkConnectPlanner(
       name = Option(fun.getFunctionName),
       nullable = udf.getNullable,
       deterministic = fun.getDeterministic)
+  }
+
+  private def transformWasmUDF(fun: proto.CommonInlineUserDefinedFunction): WasmUDF = {
+    transformWasmFuncExpression(fun).asInstanceOf[WasmUDF]
+  }
+
+  private def transformWasmFuncExpression(
+      fun: proto.CommonInlineUserDefinedFunction): Expression = {
+    val udf = fun.getWasmUdf
+    val wasm_udf = UserDefinedWasmFunction(
+      name = fun.getFunctionName,
+      bytecode = udf.getBytecode.toByteArray,
+      dataType = transformDataType(udf.getOutputType),
+      udfDeterministic = fun.getDeterministic
+    )
+    wasm_udf.builder(fun.getArgumentsList.asScala.map(transformExpression).toSeq)
   }
 
   /**
@@ -2629,6 +2650,8 @@ class SparkConnectPlanner(
         handleRegisterJavaUDF(fun)
       case proto.CommonInlineUserDefinedFunction.FunctionCase.SCALAR_SCALA_UDF =>
         handleRegisterScalarScalaUDF(fun)
+      case proto.CommonInlineUserDefinedFunction.FunctionCase.WASM_UDF =>
+        handleRegisterWasmUDF(fun)
       case _ =>
         throw InvalidPlanInput(
           s"Function with ID: ${fun.getFunctionCase.getNumber} is not supported")
@@ -2702,6 +2725,25 @@ class SparkConnectPlanner(
   private def handleRegisterScalarScalaUDF(fun: proto.CommonInlineUserDefinedFunction): Unit = {
     val udf = transformScalarScalaFunction(fun)
     session.udf.register(fun.getFunctionName, udf)
+  }
+
+  private def handleRegisterWasmUDF(fun: proto.CommonInlineUserDefinedFunction): Unit = {
+    val udf = fun.getWasmUdf
+    val bytecode = udf.getBytecode.toByteArray.toImmutableArraySeq
+
+    // convert array sequence to utf-8 string
+    val wasm = new String(bytecode.toArray, StandardCharsets.UTF_8)
+
+    throw new UnsupportedOperationException(s"WASM UDF are not supported yet: ${wasm}")
+//    val function = transformPythonFunction(udf)
+//    val udpf = UserDefinedPythonFunction(
+//      name = fun.getFunctionName,
+//      func = function,
+//      dataType = transformDataType(udf.getOutputType),
+//      pythonEvalType = udf.getEvalType,
+//      udfDeterministic = fun.getDeterministic)
+//
+//    session.udf.registerPython(fun.getFunctionName, udpf)
   }
 
   private def handleCommandPlugin(extension: ProtoAny): Unit = {

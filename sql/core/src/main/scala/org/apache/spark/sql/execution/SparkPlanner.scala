@@ -36,6 +36,7 @@ class SparkPlanner(val session: SparkSession, val experimentalMethods: Experimen
       extraPlanningStrategies ++ (
       LogicalQueryStageStrategy ::
       PythonEvals ::
+      WasmEvals ::
       new DataSourceV2Strategy(session) ::
       V2CommandStrategy ::
       FileSourceStrategy ::

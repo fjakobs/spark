@@ -149,6 +149,118 @@ def _create_py_udf(
 
     return _create_udf(f, returnType, eval_type)
 
+class UserDefinedWasmFunction:
+    def __init__(
+        self,
+        name: str,
+        bytecode: bytes,
+        nargs: int,
+        returnType: "DataTypeOrString" = StringType(),
+        deterministic: bool = True,
+    ):
+        if not isinstance(returnType, (DataType, str)):
+            raise PySparkTypeError(
+                error_class="NOT_DATATYPE_OR_STR",
+                message_parameters={
+                    "arg_name": "returnType",
+                    "arg_type": type(returnType).__name__,
+                },
+            )
+
+        self.bytecode = bytecode
+        self.name = name
+        self.nargs = nargs
+
+        self._returnType = returnType
+        # Stores UserDefinedPythonFunctions jobj, once initialized
+        self._returnType_placeholder: Optional[DataType] = None
+        self._judf_placeholder = None
+        self.deterministic = deterministic
+
+    @property
+    def returnType(self) -> DataType:
+        # This makes sure this is called after SparkContext is initialized.
+        # ``_parse_datatype_string`` accesses to JVM for parsing a DDL formatted string.
+        # TODO: PythonEvalType.SQL_BATCHED_UDF
+        if self._returnType_placeholder is None:
+            if isinstance(self._returnType, DataType):
+                self._returnType_placeholder = self._returnType
+            else:
+                self._returnType_placeholder = _parse_datatype_string(self._returnType)
+
+        return self._returnType_placeholder
+
+    @property
+    def _judf(self) -> JavaObject:
+        # It is possible that concurrent access, to newly created UDF,
+        # will initialize multiple UserDefinedWasmFunctions.
+        # This is unlikely, doesn't affect correctness,
+        # and should have a minimal performance impact.
+        if self._judf_placeholder is None:
+            self._judf_placeholder = self._create_judf()
+        return self._judf_placeholder
+
+    def _create_judf(self) -> JavaObject:
+        from pyspark.sql import SparkSession
+
+        spark = SparkSession._getActiveSessionOrCreate()
+        sc = spark.sparkContext
+
+        jdt = spark._jsparkSession.parseDataType(self.returnType.json())
+        assert sc._jvm is not None
+        judf = sc._jvm.org.apache.spark.sql.execution.wasm.UserDefinedWasmFunction(
+            self.name, bytearray(self.bytecode), jdt, self.deterministic
+        )
+        return judf
+
+    def __call__(self, *args: "ColumnOrName", **kwargs: "ColumnOrName") -> Column:
+        sc = get_active_spark_context()
+
+        assert sc._jvm is not None
+        jexprs = [_to_java_expr(arg) for arg in args] + [
+            sc._jvm.org.apache.spark.sql.catalyst.expressions.NamedArgumentExpression(
+                key, _to_java_expr(value)
+            )
+            for key, value in kwargs.items()
+        ]
+
+        judf = self._judf
+        jUDFExpr = judf.builder(_to_seq(sc, jexprs))
+        jWasmUDF = judf.fromUDFExpr(jUDFExpr)
+        return Column(jWasmUDF)
+
+    # This function is for improving the online help system in the interactive interpreter.
+    # For example, the built-in help / pydoc.help. It wraps the UDF with the docstring and
+    # argument annotation. (See: SPARK-19161)
+    def _wrapped(self) -> "UserDefinedFunctionLike":
+        def wrapper(*args: "ColumnOrName", **kwargs: "ColumnOrName") -> Column:
+            return self(*args, **kwargs)
+
+        wrapper.__name__ = self.name
+
+        wrapper.name = self.name  # type: ignore[attr-defined]
+        wrapper.bytecode = self.bytecode  # type: ignore[attr-defined]
+        wrapper.nargs = self.nargs  # type: ignore[attr-defined]
+        wrapper.returnType = self.returnType  # type: ignore[attr-defined]
+        wrapper.deterministic = self.deterministic  # type: ignore[attr-defined]
+        wrapper.asNondeterministic = functools.wraps(  # type: ignore[attr-defined]
+            self.asNondeterministic
+        )(lambda: self.asNondeterministic()._wrapped())
+        wrapper._unwrapped = self  # type: ignore[attr-defined]
+        return wrapper  # type: ignore[return-value]
+
+    def asNondeterministic(self) -> "UserDefinedFunction":
+        """
+        Updates UserDefinedFunction to nondeterministic.
+
+        .. versionadded:: 2.3
+        """
+        # Here, we explicitly clean the cache to create a JVM UDF instance
+        # with 'deterministic' updated. See SPARK-23233.
+        self._judf_placeholder = None
+        self.deterministic = False
+        return self
+    
 
 class UserDefinedFunction:
     """

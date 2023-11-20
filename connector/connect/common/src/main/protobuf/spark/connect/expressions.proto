@@ -341,7 +341,17 @@ message CommonInlineUserDefinedFunction {
     PythonUDF python_udf = 4;
     ScalarScalaUDF scalar_scala_udf = 5;
     JavaUDF java_udf = 6;
+    WasmUDF wasm_udf = 7;
   }
+}
+
+message WasmUDF {
+  // (Required) Output type of the WASM UDF
+  DataType output_type = 1;
+  // (Required) EvalType of the WASM UDF
+  int32 eval_type = 2;
+  // (Required) The encoded byte code of the WASM UDF
+  bytes bytecode = 3;
 }
 
 message PythonUDF {

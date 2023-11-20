@@ -40,6 +40,7 @@ import org.apache.spark.sql.execution.exchange.{REBALANCE_PARTITIONS_BY_COL, REB
 import org.apache.spark.sql.execution.python._
 import org.apache.spark.sql.execution.streaming._
 import org.apache.spark.sql.execution.streaming.sources.MemoryPlan
+import org.apache.spark.sql.execution.wasm.BatchEvalWasmExec
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.streaming.OutputMode
 
@@ -754,6 +755,15 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
           udtf, requiredChildOutput, resultAttrs, planLater(child), evalType) :: Nil
       case PythonDataSourcePartitions(output, partitions) =>
         PythonDataSourcePartitionsExec(output, partitions) :: Nil
+      case _ =>
+        Nil
+    }
+  }
+
+  object WasmEvals extends Strategy {
+    override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+      case BatchEvalWasm(udfs, output, child) =>
+        BatchEvalWasmExec(udfs, output, planLater(child)) :: Nil
       case _ =>
         Nil
     }

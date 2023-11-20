@@ -15,66 +15,74 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.execution.python
+package org.apache.spark.sql.execution.wasm
 
-import java.io.File
-
+import scala.collection.immutable.Seq
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-import org.apache.spark.{PartitionEvaluator, PartitionEvaluatorFactory, SparkEnv, TaskContext}
-import org.apache.spark.api.python.ChainedPythonFunctions
+import org.apache.spark.{PartitionEvaluator, PartitionEvaluatorFactory, TaskContext}
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression, GenericInternalRow, JoinedRow, MutableProjection, NamedArgumentExpression, UnsafeProjection, UnsafeRow, WasmUDF}
 import org.apache.spark.sql.execution.python.EvalPythonExec.ArgumentMetadata
 import org.apache.spark.sql.types.{DataType, StructField, StructType}
-import org.apache.spark.util.Utils
 
-abstract class EvalPythonEvaluatorFactory(
-    childOutput: Seq[Attribute],
-    udfs: Seq[PythonUDF],
-    output: Seq[Attribute])
+
+class BatchEvalWasmEvaluatorFactory(
+     childOutput: Seq[Attribute],
+     udfs: Seq[WasmUDF],
+     output: Seq[Attribute],
+     jobArtifactUUID: Option[String])
   extends PartitionEvaluatorFactory[InternalRow, InternalRow] {
 
-  protected def evaluate(
-      funcs: Seq[ChainedPythonFunctions],
-      argMetas: Array[Array[ArgumentMetadata]],
-      iter: Iterator[InternalRow],
-      schema: StructType,
-      context: TaskContext): Iterator[InternalRow]
-
   override def createEvaluator(): PartitionEvaluator[InternalRow, InternalRow] =
-    new EvalPythonPartitionEvaluator
+    new EvalWasmPartitionEvaluator
 
-  private class EvalPythonPartitionEvaluator
-      extends PartitionEvaluator[InternalRow, InternalRow] {
-    private def collectFunctions(udf: PythonUDF): (ChainedPythonFunctions, Seq[Expression]) = {
-      udf.children match {
-        case Seq(u: PythonUDF) =>
-          val (chained, children) = collectFunctions(u)
-          (ChainedPythonFunctions(chained.funcs ++ Seq(udf.func)), children)
-        case children =>
-          // There should not be any other UDFs, or the children can't be evaluated directly.
-          assert(children.forall(!_.exists(_.isInstanceOf[PythonUDF])))
-          (ChainedPythonFunctions(Seq(udf.func)), udf.children)
+  def evaluate(
+                udf: WasmUDF,
+                argMetas: Array[Array[ArgumentMetadata]],
+                iter: Iterator[InternalRow],
+                schema: StructType,
+                context: TaskContext): Iterator[InternalRow] = {
+
+    val inputIterator = BatchEvalWasmExec.getInputIterator(iter, schema)
+
+    inputIterator.map { batch =>
+      batch.map { row =>
+        val resultRow = new GenericInternalRow(1)
+        val args = row.slice(0, 2) // TODO get nargs from UDF
+        val result = WasmEngine.call[Long](udf, args: _*)
+        resultRow.setLong(0, result)
+
+        resultRow
       }
     }
-    override def eval(
+  }.flatMap(_.toSeq.iterator)
+
+  private class EvalWasmPartitionEvaluator extends PartitionEvaluator[InternalRow, InternalRow] {
+    private def collectFunctions(udf: WasmUDF): Seq[Expression] = {
+
+      udf.children match {
+        case Seq(u: WasmUDF) =>
+          val children = collectFunctions(u)
+          children
+        case children =>
+          // There should not be any other UDFs, or the children can't be evaluated directly.
+          assert(children.forall(!_.exists(_.isInstanceOf[WasmUDF])))
+          udf.children
+      }
+    }
+    def eval(
         partitionIndex: Int,
         iters: Iterator[InternalRow]*): Iterator[InternalRow] = {
+
+      // TODO: support multiple UDFs here
+      assert(udfs.length == 1, "Only one UDF is supported for now")
+
       val iter = iters.head
       val context = TaskContext.get()
 
-      // The queue used to buffer input rows so we can drain it to
-      // combine input with output from Python.
-      val queue = HybridRowQueue(
-        context.taskMemoryManager(),
-        new File(Utils.getLocalDir(SparkEnv.get.conf)),
-        childOutput.length)
-      context.addTaskCompletionListener[Unit] { ctx =>
-        queue.close()
-      }
-
-      val (pyFuncs, inputs) = udfs.map(collectFunctions).unzip
+      val inputs = udfs.map(collectFunctions)
 
       // flatten all the arguments
       val allInputs = new ArrayBuffer[Expression]
@@ -96,29 +104,35 @@ abstract class EvalPythonEvaluatorFactory(
           }
         }.toArray
       }.toArray
+
       val projection = MutableProjection.create(allInputs.toSeq, childOutput)
       projection.initialize(context.partitionId())
+
       val schema = StructType(dataTypes.zipWithIndex.map { case (dt, i) =>
         StructField(s"_$i", dt)
       }.toArray)
 
+      val queue = mutable.Queue[InternalRow]()
+
       // Add rows to queue to join later with the result.
       val projectedRowIter = iter.map { inputRow =>
-        queue.add(inputRow.asInstanceOf[UnsafeRow])
-        projection(inputRow)
-      }
+          queue.enqueue(inputRow.asInstanceOf[UnsafeRow])
+          projection(inputRow)
+        }
 
       var outputRowIterator =
-        evaluate(pyFuncs, argMetas, projectedRowIter, schema, context)
+        evaluate(udfs.head, argMetas, projectedRowIter, schema, context)
 
       val joined = new JoinedRow
       val resultProj = UnsafeProjection.create(output, output)
 
       outputRowIterator = outputRowIterator.map { outputRow =>
-        resultProj(joined(queue.remove(), outputRow))
+        resultProj(joined(queue.dequeue(), outputRow))
       }
 
       outputRowIterator
     }
   }
 }
+
+

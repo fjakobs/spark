@@ -55,7 +55,7 @@ from pyspark.sql.connect.expressions import (
     UnresolvedNamedLambdaVariable,
     CallFunction,
 )
-from pyspark.sql.connect.udf import _create_py_udf
+from pyspark.sql.connect.udf import UserDefinedWasmFunction, _create_py_udf
 from pyspark.sql.connect.udtf import AnalyzeArgument, AnalyzeResult  # noqa: F401
 from pyspark.sql.connect.udtf import _create_py_udtf
 from pyspark.sql import functions as pysparkfuncs
@@ -3980,6 +3980,25 @@ def udtf(
 
 
 udtf.__doc__ = pysparkfuncs.udtf.__doc__
+
+def wasm_udf(
+    name: str,
+    path: str,
+    nargs: int = 1,
+    returnType: "DataTypeOrString" = StringType(),
+    deterministic: bool = True,
+) -> Union["UserDefinedFunctionLike", Callable[[Callable[..., Any]], "UserDefinedFunctionLike"]]:
+    with open(path, "rb") as f:
+        bytecode = f.read()
+
+    udf_obj = UserDefinedWasmFunction(
+        name,
+        bytecode,
+        nargs,
+        returnType,
+        deterministic,
+    )
+    return udf_obj._wrapped()
 
 
 def call_function(funcName: str, *cols: "ColumnOrName") -> Column:

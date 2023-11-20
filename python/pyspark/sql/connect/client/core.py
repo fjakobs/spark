@@ -75,6 +75,7 @@ from pyspark.sql.connect.expressions import (
     PythonUDF,
     CommonInlineUserDefinedFunction,
     JavaUDF,
+    WasmUDF,
 )
 from pyspark.sql.connect.plan import (
     CommonInlineUserDefinedTableFunction,
@@ -740,6 +741,29 @@ class SparkConnectClient(object):
 
         self._execute(req)
         return name
+
+    def register_wasm(
+        self, name: str,
+        wasmByteCode: bytes,
+        return_type: Optional["DataTypeOrString"] = None,
+        eval_type: int = PythonEvalType.SQL_BATCHED_UDF,
+    ) -> None:
+        wasm_udf = WasmUDF(
+            bytecode=wasmByteCode, 
+            output_type=return_type,
+            eval_type=eval_type
+        )
+
+        fun = CommonInlineUserDefinedFunction(
+            function_name=name,
+            function=wasm_udf,
+        ).to_plan_wasm_udf(self)
+        # construct the request
+        req = self._execute_plan_request_with_metadata()
+        req.plan.command.register_function.CopyFrom(fun)
+
+        self._execute(req)
+
 
     def register_java(
         self,
